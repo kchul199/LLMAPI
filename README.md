@@ -1,98 +1,148 @@
-# 🚀 LLMAPI: 기업용 AI 상담 분석 오케스트레이션 엔진
+# 🚀 LLMAPI: Enterprise LLM Orchestration Engine for Call Centers
 
-**LLMAPI**는 고객센터의 상담 대화 데이터를 실시간으로 분석하여 **자동 요약, 감정 분석, 상담 카테고리 분류**를 수행하는 지능형 미들웨어 솔루션입니다. 고성능 상용 엔진(vLLM)과 안정적인 로컬 엔진(Ollama)을 결합하여 365일 중단 없는 AI 서비스를 제공합니다.
+**LLMAPI**는 고객센터(콜센터)의 상담 대화 데이터를 실시간으로 분석하여 **자동 요약, 감정 분석, 상담 카테고리 분류**를 수행하는 지능형 미들웨어 솔루션입니다. 
 
----
-
-## 🌟 주요 특징 (Key Features)
-
-- **🧩 엔진 애그노스틱 (Engine Agnostic)**: OpenAI 규격을 준수하여 Ollama, vLLM, OpenAI 등 어떤 엔진으로도 즉시 전환이 가능합니다.
-- **🛡️ 장애 복구 (Automatic Fail-over)**: 메인 분석 엔진에 장애가 발생하면 1초 이내에 백업 엔진으로 자동 전환되어 서비스 연속성을 보장합니다.
-- **📊 구조화된 로깅 (JSON Logging)**: 모든 분석 이력을 정형화된 JSON 로거로 기록하여 ElasticSearch, Datadog 등 로그 분석 솔루션과 즉시 연동됩니다.
-- **🧬 유연한 프롬프트 관리**: 코드 수정 없이 `prompts.yaml` 파일만 편집하여 분석 품질과 페르소나를 실시간으로 튜닝할 수 있습니다.
+단순한 API 호출을 넘어, 고성능 상용 엔진(vLLM)과 안정적인 로컬 엔진(Ollama)을 유연하게 오케스트레이션하여 365일 중단 없는 AI 서비스를 제공하며, 상담 품질 관리(QA) 자동화의 핵심 엔진 역할을 수행합니다.
 
 ---
 
-## 🏗️ 시스템 구성 (Architecture)
+## 🌟 핵심 가치 (Core Values)
 
-본 시스템은 최고의 추론 성능을 위해 **하이브리드(Hybrid)** 방식을 채택하고 있습니다.
-
-1.  **FastAPI App (Docker Container)**: 분석 로직 및 API 엔드포인트 관리.
-2.  **Redis (Docker Container)**: 대규모 트래픽 처리를 위한 비동기 메시지 큐 담당.
-3.  **Ollama (Mac Native App)**: Apple Silicon GPU(Metal) 가속을 활용한 초고속 LLM 추론.
+- **🛡️ 고가용성 (High Availability)**: 메인 엔진 장애 시 1초 이내에 백업 엔진으로 자동 전환하는 **Fail-over** 메커니즘 내장.
+- **🚀 하이브리드 추론 (Hybrid Inference)**: 상용 클라우드 GPU 엔진(vLLM)과 온프레미스(Ollama) 엔진을 동시에 지원하여 비용과 성능 최적화.
+- **📊 운영 가시성 (Operational Visibility)**: 모든 분석 이력을 **Trace-ID 기반의 구조화된 JSON 로그**로 기록하여 실시간 모니터링 가능.
+- **🧬 유연한 도메인 적응 (Domain Agnostic)**: `prompts.yaml` 수정을 통해 코드 변경 없이 상담 분야(보험, 은행, 커머스 등)별 최적화 가능.
 
 ---
 
-## 🛠️ 초보자를 위한 설치 가이드 (Step-by-Step)
+## 🏗️ 시스템 아키텍처 (Architecture)
 
-### 1단계: Mac 네이티브 Ollama 환경 구축
-모델 추론은 CPU보다 GPU가 훨씬 빠르기 때문에 Mac 전용 앱을 사용하는 것이 권장됩니다.
+### 데이터 흐름도 (Data Flow)
+```mermaid
+graph TD
+    Client[Voicebot / Admin Console] -->|API Request| FastAPI[FastAPI Orchestrator]
+    FastAPI -->|1. Generate Prompt| PromptMgr[Prompt Manager]
+    PromptMgr -->|Load config| YAML[prompts.yaml]
+    FastAPI -->|2. Inference| MainLLM[Main Engine: vLLM / Ollama]
+    MainLLM -.->|Fail/Timeout| BackupLLM[Backup Engine: Ollama]
+    MainLLM -->|3. Response| FastAPI
+    BackupLLM -->|Alternative| FastAPI
+    FastAPI -->|4. Log Result| JSONLogger[Structured JSON Logger]
+    FastAPI -->|5. Final Result| Client
+```
 
-1.  **Ollama 설치**: [Ollama 공식 홈페이지](https://ollama.com/)에서 다운로드 후 설치합니다.
-2.  **외부 접속 허용 (가장 중요)**: 기본 설정은 외부 접속이 차단되어 있습니다. 터미널을 열고 아래 명령어를 입력하세요.
-    ```bash
-    # 컨테이너의 접근을 허용하는 핵심 설정
-    launchctl setenv OLLAMA_HOST "0.0.0.0"
+### 디렉토리 구조 (Directory Structure)
+```text
+LLMAPI/
+├── src/
+│   ├── api/v1/         # API 엔드포인트 정의 (분석, 헬스체크)
+│   ├── core/           # 핵심 설정 (Config, Logging, Prompts YAML)
+│   ├── schemas/        # 데이터 검증용 Pydantic 모델
+│   ├── services/       # LLM 호출, Fail-over, Retry 비즈니스 로직
+│   └── main.py         # 애플리케이션 진입점 및 미들웨어 설정
+├── docs/               # 연동 규격서 및 기획 문서
+├── tests/              # 품질 검증 및 시스템 통합 테스트 스크립트
+├── Dockerfile          # 컨테이너화 설정
+└── docker-compose.yaml # 인프라 구성 (FastAPI, Redis 등)
+```
+
+---
+
+## 🛠️ 상세 모듈 설명 (Internal Modules)
+
+### 1. `src/services/llm.py` (Orchestration Logic)
+*   **OpenAI SDK 호환**: 다양한 백엔드 엔진을 단일 인터페이스로 추론.
+*   **장애 극복 (Fail-over)**: 메인 모델 호출 실패 시 `tenacity` 라이브러리를 통해 2회 재시도 후, 즉시 백업 모델로 전환합니다.
+*   **JSON 모드 보장**: Llama 3 계열 모델 사용 시 `response_format={"type": "json_object"}`를 강제하여 파싱 에러를 최소화합니다.
+
+### 2. `src/core/prompts.yaml` (Dynamic Prompting)
+*   프로젝트의 '뇌' 역할을 하는 파일입니다.
+*   `tasks`, `target_speakers` 변수를 바탕으로 시스템 프롬프트가 동적으로 조립됩니다.
+*   **Chain-of-Thought** 및 **Few-Shot** 기법이 적용되어 높은 분석 정확도를 유지합니다.
+
+### 3. `src/core/logging.py` (Structured Logging)
+*   운영 환경을 위해 `python-json-logger`를 사용합니다.
+*   로그 예시:
+    ```json
+    {"timestamp": "2024-04-10T14:45...", "level": "INFO", "trace_id": "req_123", "latency": 450, "is_fallback": false, "message": "Analysis Completed"}
     ```
-    *입력 후 반드시 상단 메뉴바의 Ollama 아이콘을 클릭하여 'Quit Ollama' 한 뒤, 다시 앱을 실행해 주세요.*
-3.  **모델 다운로드**: 터미널에서 아래 모델들을 미리 내려받습니다.
-    ```bash
-    ollama pull llama3.2:3b  # 메인 분석용
-    ollama pull llama3.2:1b  # 장애 대비 백업용
-    ```
 
-### 2단계: 프로젝트 실행 (Docker Compose)
-프로젝트 폴더로 이동하여 도커 컨테이너를 실행합니다. (Docker Desktop이 실행 중이어야 합니다.)
+---
 
+## 🚀 시작하기 (Installation & Setup)
+
+### 1. 환경 변수 설정
+`.env` 파일을 루트 디렉토리에 생성하고 아래와 같이 설정합니다.
+```env
+# 메인 LLM 설정 (예: vLLM 또는 Ollama)
+LLM_BASE_URL=http://host.docker.internal:11434/v1
+LLM_MODEL_NAME=llama3.2:3b
+
+# 백업 LLM 설정 (장애 대응용)
+LLM_BACKUP_BASE_URL=http://host.docker.internal:11434/v1
+LLM_BACKUP_MODEL_NAME=llama3.2:1b
+```
+
+### 2. Ollama 네이티브 설정 (Mac 기준)
+컨테이너에서 호스트의 Ollama에 접속하기 위해 권한 허용이 필요합니다.
 ```bash
-cd LLMAPI
+launchctl setenv OLLAMA_HOST "0.0.0.0"
+# Ollama 앱 종료 후 재실행 필수
+```
+
+### 3. Docker 실행
+```bash
 docker compose up --build -d
 ```
 
-### 3단계: 가동 확인 (Health Check)
-브라우저에서 아래 주소에 접속하여 서버 상태를 확인합니다.
-- `http://localhost:8001/v1/health`
-- `{"status":"healthy", ...}` 응답이 나오면 성공입니다!
+---
+
+## 📄 API 명세 (API Reference)
+
+### 텍스트 분석 요청
+`POST /v1/analyze`
+
+**Request Body:**
+```json
+{
+  "request_id": "call_20240410_001",
+  "text": "고객: 어제 주문한 상품이 아직 안 왔어요. 상담원: 불편을 드려 죄송합니다. 확인해 보니 물량 폭주로 지연 중입니다.",
+  "tasks": ["summary", "sentiment"],
+  "target_speakers": "customer"
+}
+```
+
+**Response Body:**
+```json
+{
+  "request_id": "call_20240410_001",
+  "status": "success",
+  "results": {
+    "summary": "어제 주문한 상품의 배송 지연에 대한 문의.",
+    "sentiment": "불만"
+  },
+  "usage": {
+    "total_tokens": 128,
+    "latency_ms": 850
+  }
+}
+```
 
 ---
 
-## 🧪 테스트 및 품질 검증
+## 🧪 품질 검증 (Testing)
 
-분석 품질이 정상인지 확인하기 위해 두 가지 도구를 제공합니다.
-
-1.  **통합 기능 테스트**: 전체 네트워크와 장애 대응 로직이 정상인지 확인합니다.
-    ```bash
-    python3 tests/system_test.py
-    ```
-2.  **프롬프트 품질 평가**: 실제 샘플 데이터를 분석하여 품질(요약 완성도, 감정 정확도)을 확인합니다.
-    ```bash
-    python3 tests/evaluate_prompts.py
-    ```
+- **시스템 테스트**: `python3 tests/system_test.py` (연결성 및 Fail-over 확인)
+- **품질 테스트**: `python3 tests/evaluate_prompts.py` (분석 정확도 벤치마크)
 
 ---
 
-## 🆘 트러블슈팅 (Troubleshooting)
+## 🆘 Troubleshooting
 
-### 1. `Connection Error`가 발생하며 분석이 안 됩니다.
-- **원인**: Docker 컨테이너가 Mac 호스트의 Ollama를 찾지 못하는 경우입니다.
-- **해결**:
-    - Mac 터미널에서 `launchctl setenv OLLAMA_HOST "0.0.0.0"` 명령어를 실행했는지 확인하세요.
-    - Ollama 앱을 완전히 종료 후 재기동했는지 확인하세요.
-    - `.env` 파일의 `LLM_BASE_URL`이 `http://host.docker.internal:11434/v1`인지 확인하세요.
-
-### 2. 컨테이너가 자꾸 `Restarting` 상태가 됩니다.
-- **원인**: 라이브러리 간의 버전 충돌이 발생한 경우입니다. (특히 `openai`와 `httpx`)
-- **해결**: 본 프로젝트는 `requirements.txt`에 `httpx==0.27.2`로 버전을 고정하여 패키지 충돌을 방지하고 있습니다. `docker compose build --no-cache` 명령으로 깨끗하게 다시 빌드해 보세요.
-
-### 3. 분석 결과가 너무 느립니다.
-- **원인**: GPU가 아닌 CPU로 추론 중일 가능성이 높습니다.
-- **해결**: Ollama 앱이 Mac 상단 바에 잘 떠 있는지, Docker 내부가 아닌 Mac 네이티브 앱에서 실행 중인지 확인하세요.
-
----
-
-## 📄 API 연동 규격
-자세한 Request/Response 명세는 [docs/LLMAPI_연동규격서_v1_0.md](docs/LLMAPI_연동규격서_v1_0.md) 파일을 참조해 주세요.
+1.  **500 Error (LLM Connection)**: Ollama가 실행 중인지, `OLLAMA_HOST`가 `0.0.0.0`으로 설정되었는지 확인하세요.
+2.  **JSON Parsing Error**: 모델의 용량이 너무 작거나 프롬프트가 복잡할 경우 발생할 수 있습니다. `prompts.yaml`의 제약 사항을 강화하세요.
+3.  **Docker Network**: Mac 환경에서는 `localhost` 대신 `host.docker.internal`을 사용해야 합니다.
 
 ---
 **Maintainer**: lkc (kchul199)
-**Version**: 1.1.0
+**License**: Private
