@@ -123,14 +123,22 @@ class AnalysisQueueService:
         pipe = self._redis.pipeline()
         pipe.set(self._job_key(job_id), payload, ex=settings.REDIS_JOB_TTL_SECONDS)
         pipe.rpush(settings.REDIS_QUEUE_KEY, job_id)
-        await pipe.execute()
+        try:
+            await pipe.execute()
+        except RedisError as exc:
+            self._ready = False
+            raise QueueUnavailableError(f"Redis enqueue failed: {exc}") from exc
 
         return job_id
 
     async def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         self._ensure_ready()
 
-        raw = await self._redis.get(self._job_key(job_id))
+        try:
+            raw = await self._redis.get(self._job_key(job_id))
+        except RedisError as exc:
+            self._ready = False
+            raise QueueUnavailableError(f"Redis get_job failed: {exc}") from exc
         if not raw:
             return None
 
@@ -155,7 +163,11 @@ class AnalysisQueueService:
 
     async def _save_job(self, job: Dict[str, Any]) -> None:
         payload = json.dumps(job, ensure_ascii=False)
-        await self._redis.set(self._job_key(job["job_id"]), payload, ex=settings.REDIS_JOB_TTL_SECONDS)
+        try:
+            await self._redis.set(self._job_key(job["job_id"]), payload, ex=settings.REDIS_JOB_TTL_SECONDS)
+        except RedisError as exc:
+            self._ready = False
+            raise QueueUnavailableError(f"Redis save_job failed: {exc}") from exc
 
     async def _worker_loop(self, worker_index: int) -> None:
         logger.info(
@@ -184,7 +196,20 @@ class AnalysisQueueService:
                 continue
 
             _, job_id = popped
-            await self._process_job(job_id)
+            try:
+                await self._process_job(job_id)
+            except QueueUnavailableError as exc:
+                logger.warning(
+                    f"Queue worker temporarily unavailable: {exc}",
+                    extra={"trace_id": "queue-worker"},
+                )
+                await asyncio.sleep(1)
+            except Exception as exc:
+                logger.exception(
+                    f"Queue worker unexpected error: {exc}",
+                    extra={"trace_id": "queue-worker"},
+                )
+                await asyncio.sleep(1)
 
     async def _process_job(self, job_id: str) -> None:
         try:

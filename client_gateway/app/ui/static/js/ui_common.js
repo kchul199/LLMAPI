@@ -27,6 +27,15 @@
     }
   }
 
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function formatDateTime(value) {
     if (!value) {
       return "-";
@@ -52,7 +61,7 @@
       return;
     }
     el.className = "status-badge";
-    if (status && STATUS_CLASS_MAP[status]) {
+    if (status && Object.prototype.hasOwnProperty.call(STATUS_CLASS_MAP, status)) {
       el.classList.add(STATUS_CLASS_MAP[status]);
     } else {
       el.classList.add("status-neutral");
@@ -115,6 +124,7 @@
     byId,
     safeJson,
     setText,
+    escapeHtml,
     formatDateTime,
     applyStatusBadge,
     apiFetch,

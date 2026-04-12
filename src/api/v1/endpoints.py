@@ -23,15 +23,26 @@ async def health_check():
     """시스템 상태 확인 엔드포인트"""
     prompt_status = PromptManager.get_prompt_status()
     queue_status = await analysis_queue_service.get_health()
+    llm_runtime = llm_service.get_runtime_health()
+    llm_probe = await llm_service.probe_upstream()
+    llm_runtime["upstream_probe"] = llm_probe
+
+    prompt_ok = bool(prompt_status.get("exists")) and bool(prompt_status.get("loaded"))
+    queue_ok = not queue_status.get("enabled", False) or bool(queue_status.get("ready"))
+    llm_ok = bool(llm_runtime.get("serving_available", llm_runtime.get("client_available", True))) and bool(llm_probe.get("any_reachable"))
+    llm_resilience_ok = bool(llm_runtime.get("retry_policy_available", True))
+    llm_health_ok = llm_ok and llm_resilience_ok
+    overall_status = "healthy" if prompt_ok and queue_ok and llm_health_ok else "degraded"
+
     return {
-        "status": "healthy",
+        "status": overall_status,
         "version": settings.APP_VERSION,
         "llm": {
             "main_endpoint": settings.LLM_BASE_URL,
             "main_model": settings.LLM_MODEL_NAME,
             "backup_enabled": bool(settings.LLM_BACKUP_MODEL_NAME),
             "backup_model": settings.LLM_BACKUP_MODEL_NAME,
-            "runtime": llm_service.get_runtime_health(),
+            "runtime": llm_runtime,
         },
         "prompt_config": prompt_status,
         "queue": queue_status,
@@ -70,10 +81,12 @@ async def analyze_text(request: AnalysisRequest):
             request_id=request.request_id,
             status="success",
             results=llm_response["results"],
+            is_fallback=bool(llm_response.get("is_fallback", False)),
             usage=AnalysisUsage(
                 total_tokens=llm_response["usage"]["total_tokens"],
-                latency_ms=latency
-            )
+                latency_ms=latency,
+                model=llm_response["usage"].get("model"),
+            ),
         )
 
     except LLMUpstreamError as e:

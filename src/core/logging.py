@@ -1,6 +1,11 @@
 import logging
 import sys
-from pythonjsonlogger import jsonlogger
+
+try:
+    from pythonjsonlogger import jsonlogger
+except ImportError:  # pragma: no cover - optional dependency fallback
+    jsonlogger = None
+
 from src.core.config import settings
 
 class TraceIdFilter(logging.Filter):
@@ -21,9 +26,14 @@ def setup_logging():
     log_handler = logging.StreamHandler(sys.stdout)
     
     # JSON 포맷터 적용 (운영성 지표 포함)
-    formatter = jsonlogger.JsonFormatter(
-        '%(asctime)s %(levelname)s %(name)s %(message)s %(trace_id)s'
-    )
+    if jsonlogger is not None:
+        formatter = jsonlogger.JsonFormatter(
+            '%(asctime)s %(levelname)s %(name)s %(message)s %(trace_id)s'
+        )
+    else:
+        formatter = logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s %(message)s trace_id=%(trace_id)s"
+        )
     log_handler.setFormatter(formatter)
     log_handler.addFilter(TraceIdFilter())
     

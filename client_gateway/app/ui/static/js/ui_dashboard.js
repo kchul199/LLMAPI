@@ -1,5 +1,5 @@
 (function () {
-  const { apiFetch, setText, formatDateTime, applyStatusBadge, byId } = window.UICommon;
+  const { apiFetch, setText, escapeHtml, formatDateTime, applyStatusBadge, byId } = window.UICommon;
 
   async function loadHealth() {
     const badge = byId("health-overall");
@@ -42,15 +42,19 @@
 
       tbody.innerHTML = data.recent_failed
         .map(
-          (row) => `
+          (row) => {
+            const requestUid = String(row.request_uid || "");
+            const requestPath = `/ui/history/${encodeURIComponent(requestUid)}`;
+            return `
           <tr>
-            <td class="mono"><a href="/ui/history/${row.request_uid}">${row.request_uid}</a></td>
-            <td>${row.source_system}</td>
-            <td><span class="status-badge ${statusClass(row.status)}">${row.status}</span></td>
-            <td>${row.error_code || "-"}</td>
-            <td>${formatDateTime(row.updated_at)}</td>
+            <td class="mono"><a href="${requestPath}">${escapeHtml(requestUid || "-")}</a></td>
+            <td>${escapeHtml(row.source_system || "-")}</td>
+            <td><span class="status-badge ${statusClass(row.status)}">${escapeHtml(row.status || "-")}</span></td>
+            <td>${escapeHtml(row.error_code || "-")}</td>
+            <td>${escapeHtml(formatDateTime(row.updated_at))}</td>
           </tr>
-        `,
+        `;
+          },
         )
         .join("");
     } catch (error) {
@@ -68,7 +72,10 @@
       FAILED: "status-failed",
       TIMEOUT: "status-timeout",
     };
-    return map[status] || "status-neutral";
+    if (Object.prototype.hasOwnProperty.call(map, status)) {
+      return map[status];
+    }
+    return "status-neutral";
   }
 
   document.addEventListener("DOMContentLoaded", async () => {

@@ -17,12 +17,15 @@ class TestAPIContract(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
-        self.assertEqual(data["status"], "healthy")
+        self.assertIn(data["status"], ("healthy", "degraded"))
         self.assertIn("version", data)
         self.assertIn("llm", data)
         self.assertIn("prompt_config", data)
         self.assertIn("queue", data)
         self.assertIn("runtime", data["llm"])
+        self.assertIn("client_available", data["llm"]["runtime"])
+        self.assertIn("serving_available", data["llm"]["runtime"])
+        self.assertIn("upstream_probe", data["llm"]["runtime"])
 
     def test_analyze_rejects_empty_tasks(self):
         payload = {
@@ -68,7 +71,9 @@ class TestAPIContract(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["request_id"], "req_success")
         self.assertEqual(data["results"]["sentiment"], "불만")
+        self.assertFalse(data["is_fallback"])
         self.assertEqual(data["usage"]["total_tokens"], 42)
+        self.assertEqual(data["usage"]["model"], "llama3.2:3b")
 
         called_tasks = mock_analyze.await_args.kwargs["tasks"]
         self.assertEqual(called_tasks, ["summary", "sentiment", "category"])

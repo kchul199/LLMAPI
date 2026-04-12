@@ -3,8 +3,32 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from openai import AsyncOpenAI
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+import httpx
+
+try:
+    from openai import AsyncOpenAI
+except ImportError:  # pragma: no cover - optional dependency fallback
+    AsyncOpenAI = None
+try:
+    from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+    TENACITY_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency fallback
+    TENACITY_AVAILABLE = False
+
+    def retry(*_args, **_kwargs):
+        def _decorator(func):
+            return func
+
+        return _decorator
+
+    def retry_if_exception_type(*_args, **_kwargs):
+        return None
+
+    def stop_after_attempt(*_args, **_kwargs):
+        return None
+
+    def wait_exponential(*_args, **_kwargs):
+        return None
 
 from src.core.config import settings
 from src.services.prompts import PromptManager
@@ -80,16 +104,40 @@ class CircuitBreaker:
 
 class LLMService:
     def __init__(self):
-        self.main_client = AsyncOpenAI(
-            base_url=settings.LLM_BASE_URL,
-            api_key=settings.LLM_API_KEY or "not-needed",
-            timeout=max(settings.LLM_TIMEOUT_MIN_SECONDS, settings.LLM_TIMEOUT_SUMMARY_SECONDS),
-        )
-        self.backup_client = AsyncOpenAI(
-            base_url=settings.LLM_BACKUP_BASE_URL,
-            api_key="not-needed",
-            timeout=max(settings.LLM_TIMEOUT_MIN_SECONDS, settings.LLM_TIMEOUT_SUMMARY_SECONDS),
-        )
+        self.main_client = None
+        self.backup_client = None
+        self._client_available = False
+        self._client_error: Optional[str] = None
+
+        if AsyncOpenAI is None:
+            self._client_error = "openai 패키지가 설치되지 않았습니다."
+        else:
+            init_errors: list[str] = []
+
+            try:
+                self.main_client = AsyncOpenAI(
+                    base_url=settings.LLM_BASE_URL,
+                    api_key=settings.LLM_API_KEY or "not-needed",
+                    timeout=max(settings.LLM_TIMEOUT_MIN_SECONDS, settings.LLM_TIMEOUT_SUMMARY_SECONDS),
+                )
+            except Exception as exc:
+                init_errors.append(f"main client init failed: {exc}")
+                logger.exception("Main LLM client initialization failed: %s", exc)
+
+            if settings.LLM_BACKUP_MODEL_NAME:
+                try:
+                    self.backup_client = AsyncOpenAI(
+                        base_url=settings.LLM_BACKUP_BASE_URL,
+                        api_key=settings.LLM_BACKUP_API_KEY or settings.LLM_API_KEY or "not-needed",
+                        timeout=max(settings.LLM_TIMEOUT_MIN_SECONDS, settings.LLM_TIMEOUT_SUMMARY_SECONDS),
+                    )
+                except Exception as exc:
+                    init_errors.append(f"backup client init failed: {exc}")
+                    logger.exception("Backup LLM client initialization failed: %s", exc)
+
+            self._client_available = self.main_client is not None or self.backup_client is not None
+            if init_errors:
+                self._client_error = "; ".join(init_errors)
 
         self.main_breaker = CircuitBreaker(name="main")
         self.backup_breaker = CircuitBreaker(name="backup")
@@ -106,7 +154,7 @@ class LLMService:
     )
     async def _call_inference(
         self,
-        client: AsyncOpenAI,
+        client: Any,
         model: str,
         system_prompt: str,
         user_message: str,
@@ -139,14 +187,21 @@ class LLMService:
         return normalized
 
     @staticmethod
-    def _safe_json_loads(content: str) -> Dict[str, Any]:
+    def _safe_json_loads(content: str) -> tuple[Dict[str, Any], bool]:
         try:
             loaded = json.loads(content)
             if isinstance(loaded, dict):
-                return loaded
-            return {"raw_result": loaded}
+                return loaded, True
+            return {"raw_result": loaded}, True
         except json.JSONDecodeError:
-            return {"error": "JSON 파싱 실패", "raw_content": content}
+            return {"raw_content": content}, False
+
+    @staticmethod
+    def _validate_task_results(parsed_results: Dict[str, Any], tasks: List[str]) -> None:
+        missing_tasks = [task for task in tasks if task not in parsed_results or parsed_results.get(task) is None]
+        if missing_tasks:
+            task_list = ", ".join(missing_tasks)
+            raise LLMUpstreamError(f"LLM 응답에 필수 분석 결과가 누락되었습니다: {task_list}")
 
     @staticmethod
     def _resolve_timeout(tasks: List[str], is_fallback: bool = False) -> float:
@@ -168,7 +223,7 @@ class LLMService:
     async def _attempt_with_breaker(
         self,
         breaker: CircuitBreaker,
-        client: AsyncOpenAI,
+        client: Any,
         model: str,
         system_prompt: str,
         user_message: str,
@@ -205,6 +260,10 @@ class LLMService:
         1) Main model + retry + circuit breaker
         2) On main failure, fallback model + breaker
         """
+        if not self._client_available:
+            reason = self._client_error or "LLM client is unavailable"
+            raise LLMUpstreamError(f"LLM 클라이언트 초기화 실패: {reason}")
+
         system_prompt = PromptManager.get_analysis_system_prompt(
             tasks=tasks,
             target_speakers=target_speakers,
@@ -223,24 +282,31 @@ class LLMService:
         response = None
         main_error: Optional[Exception] = None
 
-        try:
-            logger.info(
-                f"LLM Call [Main]: {current_model}",
-                extra={"trace_id": request_id, "timeout": main_timeout},
-            )
-            response = await self._attempt_with_breaker(
-                breaker=self.main_breaker,
-                client=self.main_client,
-                model=current_model,
-                system_prompt=system_prompt,
-                user_message=user_message,
-                request_timeout=main_timeout,
-                request_id=request_id,
-            )
-        except Exception as exc:
-            main_error = exc
+        if self.main_client is not None:
+            try:
+                logger.info(
+                    f"LLM Call [Main]: {current_model}",
+                    extra={"trace_id": request_id, "timeout": main_timeout},
+                )
+                response = await self._attempt_with_breaker(
+                    breaker=self.main_breaker,
+                    client=self.main_client,
+                    model=current_model,
+                    system_prompt=system_prompt,
+                    user_message=user_message,
+                    request_timeout=main_timeout,
+                    request_id=request_id,
+                )
+            except Exception as exc:
+                main_error = exc
+                logger.warning(
+                    f"Main Engine Failed: {exc}. Triggering fail-over to backup.",
+                    extra={"trace_id": request_id},
+                )
+        else:
+            main_error = LLMUpstreamError("메인 LLM 클라이언트가 초기화되지 않았습니다.")
             logger.warning(
-                f"Main Engine Failed: {exc}. Triggering fail-over to backup.",
+                "Main Engine Unavailable. Triggering fail-over to backup.",
                 extra={"trace_id": request_id},
             )
 
@@ -250,6 +316,8 @@ class LLMService:
 
             is_fallback = True
             current_model = settings.LLM_BACKUP_MODEL_NAME
+            if self.backup_client is None:
+                raise LLMUpstreamError("백업 LLM 클라이언트 초기화에 실패했습니다.") from main_error
 
             try:
                 logger.info(
@@ -272,8 +340,11 @@ class LLMService:
                 )
                 raise LLMUpstreamError("메인/백업 LLM 호출 모두 실패했습니다.") from backup_error
 
-        content = response.choices[0].message.content or "{}"
-        parsed_results = self._safe_json_loads(content)
+        content = response.choices[0].message.content or ""
+        parsed_results, parse_ok = self._safe_json_loads(content)
+        if not parse_ok:
+            raise LLMUpstreamError("LLM 응답 JSON 파싱 실패")
+        self._validate_task_results(parsed_results, tasks)
         normalized_results = self._normalize_results(parsed_results, tasks)
 
         usage = getattr(response, "usage", None)
@@ -288,8 +359,51 @@ class LLMService:
             },
         }
 
-    def get_runtime_health(self) -> Dict[str, Any]:
+    async def probe_upstream(self, timeout_seconds: float = 2.0) -> Dict[str, Any]:
+        async def _probe_models(base_url: str) -> Dict[str, Any]:
+            endpoint = f"{base_url.rstrip('/')}/models"
+            try:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                    response = await client.get(endpoint)
+                return {
+                    "reachable": response.status_code < 400,
+                    "status_code": response.status_code,
+                }
+            except Exception as exc:
+                return {
+                    "reachable": False,
+                    "status_code": None,
+                    "error": str(exc),
+                }
+
+        main_probe = {"reachable": False, "status_code": None}
+        backup_probe = {"reachable": False, "status_code": None}
+
+        if self.main_client is not None:
+            main_probe = await _probe_models(settings.LLM_BASE_URL)
+        if self.backup_client is not None and settings.LLM_BACKUP_MODEL_NAME:
+            backup_probe = await _probe_models(settings.LLM_BACKUP_BASE_URL)
+
         return {
+            "main": main_probe,
+            "backup": backup_probe,
+            "any_reachable": bool(main_probe.get("reachable") or backup_probe.get("reachable")),
+        }
+
+    def get_runtime_health(self) -> Dict[str, Any]:
+        main_breaker = self.main_breaker.snapshot()
+        backup_breaker = self.backup_breaker.snapshot()
+        main_serving_ready = self.main_client is not None and main_breaker.get("state") != "open"
+        backup_enabled = bool(settings.LLM_BACKUP_MODEL_NAME)
+        backup_serving_ready = backup_enabled and self.backup_client is not None and backup_breaker.get("state") != "open"
+
+        return {
+            "client_available": self._client_available,
+            "client_error": self._client_error,
+            "retry_policy_available": TENACITY_AVAILABLE,
+            "serving_available": bool(main_serving_ready or backup_serving_ready),
+            "main_serving_ready": bool(main_serving_ready),
+            "backup_serving_ready": bool(backup_serving_ready),
             "retry": {
                 "attempts": settings.LLM_RETRY_ATTEMPTS,
                 "min_wait_seconds": settings.LLM_RETRY_MIN_WAIT_SECONDS,
@@ -304,8 +418,8 @@ class LLMService:
                 "backup_multiplier": settings.LLM_TIMEOUT_BACKUP_MULTIPLIER,
             },
             "circuit_breaker": {
-                "main": self.main_breaker.snapshot(),
-                "backup": self.backup_breaker.snapshot(),
+                "main": main_breaker,
+                "backup": backup_breaker,
             },
         }
 

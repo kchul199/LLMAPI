@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     
     # Backup LLM Settings (for Fail-over)
     LLM_BACKUP_BASE_URL: str = "http://localhost:11434/v1"
+    LLM_BACKUP_API_KEY: Optional[str] = None
     LLM_BACKUP_MODEL_NAME: Optional[str] = "llama3.2:1b"
 
     # LLM Retry/Circuit Breaker

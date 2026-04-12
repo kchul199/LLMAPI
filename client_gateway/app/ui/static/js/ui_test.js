@@ -11,6 +11,8 @@
 
   let lastResponseJson = "{}";
   let polling = false;
+  const MAX_SOURCE_SYSTEM_LEN = 64;
+  const MAX_CLIENT_REQUEST_ID_LEN = 100;
 
   function readCheckedValues(name) {
     return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
@@ -35,12 +37,29 @@
     return `req_${timestamp}`;
   }
 
+  function rotateClientRequestId() {
+    byId("client_request_id").value = generateRequestId();
+  }
+
+  function buildRetryRequestId(baseId) {
+    const suffix = `_retry_${Date.now().toString().slice(-6)}`;
+    const normalizedBase = String(baseId || "req").trim() || "req";
+    const maxBaseLen = Math.max(1, MAX_CLIENT_REQUEST_ID_LEN - suffix.length);
+    return `${normalizedBase.slice(0, maxBaseLen)}${suffix}`;
+  }
+
   function validatePayload(payload) {
     if (!payload.source_system || payload.source_system.trim().length === 0) {
       return "source_system은 필수입니다.";
     }
+    if (payload.source_system.length > MAX_SOURCE_SYSTEM_LEN) {
+      return `source_system은 최대 ${MAX_SOURCE_SYSTEM_LEN}자까지 입력할 수 있습니다.`;
+    }
     if (!payload.client_request_id || payload.client_request_id.trim().length === 0) {
       return "client_request_id는 필수입니다.";
+    }
+    if (payload.client_request_id.length > MAX_CLIENT_REQUEST_ID_LEN) {
+      return `client_request_id는 최대 ${MAX_CLIENT_REQUEST_ID_LEN}자까지 입력할 수 있습니다.`;
     }
     if (!payload.text || payload.text.trim().length === 0) {
       return "text는 필수입니다.";
@@ -131,6 +150,7 @@
         body: JSON.stringify(payload),
       });
       renderResponse(status, "sync", data);
+      rotateClientRequestId();
     } catch (error) {
       renderError(error, "sync");
     } finally {
@@ -158,6 +178,7 @@
             mode: "async",
             pollingText: "done",
           });
+          rotateClientRequestId();
           return;
         }
       } catch (error) {
@@ -213,8 +234,9 @@
     document.querySelector('input[name="target_speakers"][value="both"]').checked = true;
   }
 
-  function prefillFromQuery() {
+  async function prefillFromQuery() {
     const query = new URLSearchParams(window.location.search);
+    const requestUid = query.get("request_uid");
     const sourceSystem = query.get("source_system");
     const clientRequestId = query.get("client_request_id");
     const text = query.get("text");
@@ -222,14 +244,40 @@
     const promptVersion = query.get("prompt_version");
     const tasks = query.get("tasks");
 
+    if (requestUid) {
+      try {
+        const { data } = await apiFetch(`/ui/api/requests/${encodeURIComponent(requestUid)}`);
+        const request = data.request || {};
+
+        if (request.source_system) byId("source_system").value = request.source_system;
+        if (request.client_request_id) byId("client_request_id").value = buildRetryRequestId(request.client_request_id);
+        if (request.text_masked) byId("text").value = request.text_masked;
+        if (request.prompt_version) byId("prompt_version").value = request.prompt_version;
+        if (request.target_speakers && ["agent", "customer", "both"].includes(request.target_speakers)) {
+          const radio = document.querySelector(`input[name="target_speakers"][value="${request.target_speakers}"]`);
+          if (radio) radio.checked = true;
+        }
+        if (Array.isArray(request.tasks)) {
+          const taskSet = new Set(request.tasks.map((x) => String(x || "").trim()).filter(Boolean));
+          Array.from(document.querySelectorAll('input[name="tasks"]')).forEach((el) => {
+            el.checked = taskSet.has(el.value);
+          });
+        }
+      } catch (error) {
+        console.warn("request_uid prefill failed:", error);
+      }
+    }
+
     if (sourceSystem) byId("source_system").value = sourceSystem;
-    if (clientRequestId) byId("client_request_id").value = clientRequestId;
+    if (clientRequestId) byId("client_request_id").value = clientRequestId.slice(0, MAX_CLIENT_REQUEST_ID_LEN);
     if (text) byId("text").value = text;
     if (promptVersion) byId("prompt_version").value = promptVersion;
 
     if (targetSpeakers) {
-      const radio = document.querySelector(`input[name="target_speakers"][value="${targetSpeakers}"]`);
-      if (radio) radio.checked = true;
+      if (["agent", "customer", "both"].includes(targetSpeakers)) {
+        const radio = document.querySelector(`input[name="target_speakers"][value="${targetSpeakers}"]`);
+        if (radio) radio.checked = true;
+      }
     }
 
     if (tasks) {
@@ -240,8 +288,8 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    prefillFromQuery();
+  document.addEventListener("DOMContentLoaded", async () => {
+    await prefillFromQuery();
 
     if (!byId("client_request_id").value) {
       byId("client_request_id").value = generateRequestId();

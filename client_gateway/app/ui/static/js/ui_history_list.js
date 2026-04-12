@@ -1,5 +1,5 @@
 (function () {
-  const { byId, apiFetch, formatDateTime } = window.UICommon;
+  const { byId, apiFetch, escapeHtml, formatDateTime } = window.UICommon;
 
   const state = {
     page: 1,
@@ -7,22 +7,22 @@
     total: 0,
   };
 
-  function toIsoStringOrNull(value) {
+  function toKstIsoStringOrNull(value) {
     if (!value) {
       return null;
     }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
+    const normalized = String(value).trim();
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)) {
       return null;
     }
-    return date.toISOString();
+    return `${normalized}:00+09:00`;
   }
 
   function buildQuery() {
     const sourceSystem = byId("filter-source-system").value.trim();
     const status = byId("filter-status").value;
-    const fromValue = toIsoStringOrNull(byId("filter-from").value);
-    const toValue = toIsoStringOrNull(byId("filter-to").value);
+    const fromValue = toKstIsoStringOrNull(byId("filter-from").value);
+    const toValue = toKstIsoStringOrNull(byId("filter-to").value);
     const size = Number.parseInt(byId("filter-size").value, 10) || 20;
 
     state.size = size;
@@ -48,7 +48,10 @@
       FAILED: "status-failed",
       TIMEOUT: "status-timeout",
     };
-    return map[status] || "status-neutral";
+    if (Object.prototype.hasOwnProperty.call(map, status)) {
+      return map[status];
+    }
+    return "status-neutral";
   }
 
   function updatePager() {
@@ -71,17 +74,21 @@
 
     tbody.innerHTML = payload.items
       .map(
-        (row) => `
+        (row) => {
+          const requestUid = String(row.request_uid || "");
+          const requestPath = `/ui/history/${encodeURIComponent(requestUid)}`;
+          return `
         <tr>
-          <td>${formatDateTime(row.created_at)}</td>
-          <td class="mono">${row.request_uid}</td>
-          <td>${row.source_system}</td>
-          <td class="mono">${row.client_request_id}</td>
-          <td><span class="status-badge ${statusClass(row.status)}">${row.status}</span></td>
-          <td>${formatDateTime(row.updated_at)}</td>
-          <td><a href="/ui/history/${row.request_uid}">상세</a></td>
+          <td>${escapeHtml(formatDateTime(row.created_at))}</td>
+          <td class="mono">${escapeHtml(requestUid || "-")}</td>
+          <td>${escapeHtml(row.source_system || "-")}</td>
+          <td class="mono">${escapeHtml(row.client_request_id || "-")}</td>
+          <td><span class="status-badge ${statusClass(row.status)}">${escapeHtml(row.status || "-")}</span></td>
+          <td>${escapeHtml(formatDateTime(row.updated_at))}</td>
+          <td><a href="${requestPath}">상세</a></td>
         </tr>
-      `,
+      `;
+        },
       )
       .join("");
 

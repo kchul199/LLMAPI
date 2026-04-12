@@ -1,5 +1,5 @@
 (function () {
-  const { byId, apiFetch, safeJson, formatDateTime, applyStatusBadge } = window.UICommon;
+  const { byId, apiFetch, safeJson, escapeHtml, formatDateTime, applyStatusBadge } = window.UICommon;
 
   function renderBasic(request) {
     const basic = byId("detail-basic");
@@ -16,7 +16,10 @@
     ];
 
     basic.innerHTML = keys
-      .map(([key, value]) => `<dt>${key}</dt><dd class="mono">${value == null ? "-" : value}</dd>`)
+      .map(
+        ([key, value]) =>
+          `<dt>${escapeHtml(key)}</dt><dd class="mono">${escapeHtml(value == null ? "-" : String(value))}</dd>`,
+      )
       .join("");
   }
 
@@ -32,12 +35,12 @@
         (row) => `
         <li>
           <div class="line-title">
-            <span class="mono">${row.prev_status || "-"}</span>
+            <span class="mono">${escapeHtml(row.prev_status || "-")}</span>
             <span>→</span>
-            <span class="mono">${row.new_status}</span>
+            <span class="mono">${escapeHtml(row.new_status || "-")}</span>
           </div>
-          <div class="line-meta">${formatDateTime(row.changed_at)}</div>
-          <div class="line-meta">${row.reason_code || ""} ${row.reason_message || ""}</div>
+          <div class="line-meta">${escapeHtml(formatDateTime(row.changed_at))}</div>
+          <div class="line-meta">${escapeHtml(row.reason_code || "")} ${escapeHtml(row.reason_message || "")}</div>
         </li>
       `,
       )
@@ -48,14 +51,7 @@
     const link = byId("btn-retest");
     const params = new URLSearchParams();
 
-    if (request.source_system) params.set("source_system", request.source_system);
-    if (request.client_request_id) params.set("client_request_id", `${request.client_request_id}_retry`);
-    if (request.text_masked) params.set("text", request.text_masked);
-    if (request.target_speakers) params.set("target_speakers", request.target_speakers);
-    if (request.prompt_version) params.set("prompt_version", request.prompt_version);
-    if (Array.isArray(request.tasks) && request.tasks.length > 0) {
-      params.set("tasks", request.tasks.join(","));
-    }
+    if (request.request_uid) params.set("request_uid", request.request_uid);
 
     link.href = `/ui/test?${params.toString()}`;
   }

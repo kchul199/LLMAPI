@@ -48,11 +48,13 @@ class AnalysisRequest(BaseModel):
 class AnalysisUsage(BaseModel):
     total_tokens: int = 0
     latency_ms: int = 0
+    model: Optional[str] = None
 
 class AnalysisResponse(BaseModel):
     request_id: str
     status: str = "success"
     results: Dict[str, Any] = Field(..., description="Results for each requested task")
+    is_fallback: bool = False
     usage: AnalysisUsage = Field(default_factory=AnalysisUsage)
     error: Optional[str] = None
 

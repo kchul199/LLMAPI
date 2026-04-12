@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Integer, String, Text, JSON
+from sqlalchemy import DateTime, Enum, Integer, String, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -8,6 +8,9 @@ from app.db.base import Base
 
 class AnalysisRequestRecord(Base):
     __tablename__ = "client_analysis_request"
+    __table_args__ = (
+        UniqueConstraint("source_system", "client_request_id", name="uk_source_client_request"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     request_uid: Mapped[str] = mapped_column(String(36), unique=True, index=True)
