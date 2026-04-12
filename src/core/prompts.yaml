@@ -25,6 +25,10 @@ analysis_system_prompt_v1: |
      - '분노': 강한 항의, 고성, 욕설, 협박 등 격앙된 상태.
      - '기대': 해결책 제안이나 신규 혜택에 대해 관심을 갖고 긍정적 결과를 기다림.
 
+  3. 카테고리 분류 (category):
+     - 아래 카테고리 중 가장 적합한 값 1개를 선택하십시오.
+     - 허용 값: "배송/물류", "상품/품질", "결제/환불", "계정/인증", "시스템/오류", "기타"
+
   [분석 사고 과정 (Chain-of-Thought)]
   - 먼저 대화 전체의 흐름을 파악하십시오.
   - 지정된 화자의 주요 감정 표현 단어와 문맥을 추출하십시오.
@@ -36,10 +40,28 @@ analysis_system_prompt_v1: |
   - 지정된 키({tasks_str}) 이외의 데이터는 포함하지 마십시오.
 
   [분석 예시 (Few-Shot)]
-  입력: "고객: 주문한 물건이 안 와요! 화나 죽겠어요. 상담원: 죄송합니다. 바로 확인해 드릴게요." / 태스크: summary, sentiment / 화자: customer
-  출력: {{"summary": "주문 상품 배송 지연에 대한 고객의 강한 항의.", "sentiment": "분노"}}
+  입력: "고객: 주문한 물건이 안 와요! 화나 죽겠어요. 상담원: 죄송합니다. 바로 확인해 드릴게요." / 태스크: summary, sentiment, category / 화자: customer
+  출력: {{"summary": "주문 상품 배송 지연에 대한 고객의 강한 항의.", "sentiment": "분노", "category": "배송/물류"}}
 
 analysis_user_message_v1: |
   분석할 상담 대화록은 다음과 같습니다:
   
+  {text}
+
+# Optional prompt-version routing example (options.prompt_version = "v1.1")
+analysis_system_prompt_v1_1: |
+  당신은 대한민국 고객센터 QA 분석 전문가입니다.
+  반드시 요청된 화자({target_desc}) 중심으로 분석하세요.
+
+  요청된 태스크: {tasks_str}
+
+  출력 규칙:
+  - 반드시 JSON 객체만 반환
+  - 키는 요청된 태스크 이름과 정확히 일치
+  - 없는 정보는 추측하지 말고 null 사용
+
+analysis_user_message_v1_1: |
+  아래 상담 대화를 분석하세요.
+  불필요한 설명 없이 JSON 객체로만 답변하세요.
+
   {text}

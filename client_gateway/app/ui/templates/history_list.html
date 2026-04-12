@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-card compact">
+  <div>
+    <h1>요청 이력 조회</h1>
+    <p>필터 조건으로 요청을 검색하고 상세 이력으로 이동합니다.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <h3>검색 필터</h3>
+  </header>
+
+  <form id="history-filter-form" class="filter-grid" novalidate>
+    <div class="field">
+      <label for="filter-source-system">source_system</label>
+      <input id="filter-source-system" type="text" placeholder="qa-admin" />
+    </div>
+
+    <div class="field">
+      <label for="filter-status">status</label>
+      <select id="filter-status">
+        <option value="">ALL</option>
+        <option>RECEIVED</option>
+        <option>QUEUED</option>
+        <option>PROCESSING</option>
+        <option>COMPLETED</option>
+        <option>FAILED</option>
+        <option>TIMEOUT</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="filter-from">from</label>
+      <input id="filter-from" type="datetime-local" />
+    </div>
+
+    <div class="field">
+      <label for="filter-to">to</label>
+      <input id="filter-to" type="datetime-local" />
+    </div>
+
+    <div class="field">
+      <label for="filter-size">size</label>
+      <select id="filter-size">
+        <option value="20" selected>20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+
+    <div class="field action-field">
+      <button id="btn-search" type="submit" class="btn btn-primary">검색</button>
+      <button id="btn-search-reset" type="button" class="btn btn-ghost">초기화</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <h3>조회 결과</h3>
+    <span id="history-summary" class="text-muted">-</span>
+  </header>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>created_at</th>
+          <th>request_uid</th>
+          <th>source_system</th>
+          <th>client_request_id</th>
+          <th>status</th>
+          <th>updated_at</th>
+          <th>action</th>
+        </tr>
+      </thead>
+      <tbody id="history-body">
+        <tr><td colspan="7" class="empty">조회 대기중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pager">
+    <button id="history-prev" class="btn btn-ghost" type="button">이전</button>
+    <span id="history-page-info">page 1</span>
+    <button id="history-next" class="btn btn-ghost" type="button">다음</button>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('ui-static', path='js/ui_history_list.js') }}" defer></script>
+{% endblock %}

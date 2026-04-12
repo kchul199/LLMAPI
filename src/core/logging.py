@@ -3,6 +3,13 @@ import sys
 from pythonjsonlogger import jsonlogger
 from src.core.config import settings
 
+class TraceIdFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Ensure trace_id is always present for stable JSON log schema.
+        if not hasattr(record, "trace_id"):
+            record.trace_id = "-"
+        return True
+
 def setup_logging():
     logger = logging.getLogger()
     
@@ -18,6 +25,7 @@ def setup_logging():
         '%(asctime)s %(levelname)s %(name)s %(message)s %(trace_id)s'
     )
     log_handler.setFormatter(formatter)
+    log_handler.addFilter(TraceIdFilter())
     
     # 기존 핸들러 제거 후 신규 추가
     if logger.hasHandlers():
@@ -27,6 +35,3 @@ def setup_logging():
     # FastAPI 관련 로그도 정형화하도록 전역 설정
     logging.getLogger("uvicorn.access").handlers = [log_handler]
     logging.getLogger("uvicorn.error").handlers = [log_handler]
-
-# 초기 로깅 설정 실행
-setup_logging()

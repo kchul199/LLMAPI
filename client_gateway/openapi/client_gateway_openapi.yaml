@@ -1,0 +1,415 @@
+openapi: 3.0.3
+info:
+  title: LLMAPI Client Gateway API
+  version: 0.1.0
+  description: |
+    업무 시스템과 LLMAPI 사이의 표준 중계 API.
+    요청 이력/결과를 MySQL에 저장하고 동기/비동기 분석을 지원한다.
+servers:
+  - url: http://localhost:8100
+    description: Local
+
+tags:
+  - name: Analyze
+  - name: RequestHistory
+  - name: Health
+
+paths:
+  /client/v1/analyze:
+    post:
+      tags: [Analyze]
+      summary: 동기 분석 요청
+      operationId: analyzeSync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientAnalyzeRequest'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientAnalyzeResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/DuplicateRequestError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /client/v1/analyze/async:
+    post:
+      tags: [Analyze]
+      summary: 비동기 분석 등록
+      operationId: analyzeAsyncEnqueue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientAnalyzeRequest'
+      responses:
+        '202':
+          description: 접수 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientAsyncEnqueueResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/DuplicateRequestError'
+        '503':
+          $ref: '#/components/responses/QueueUnavailableError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /client/v1/analyze/async/{job_id}:
+    get:
+      tags: [Analyze]
+      summary: 비동기 작업 상태 조회
+      operationId: analyzeAsyncStatus
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientAsyncStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+
+  /client/v1/requests:
+    get:
+      tags: [RequestHistory]
+      summary: 요청 이력 목록 조회
+      operationId: listRequests
+      parameters:
+        - in: query
+          name: source_system
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/RequestStatus'
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestListResponse'
+
+  /client/v1/requests/{request_uid}:
+    get:
+      tags: [RequestHistory]
+      summary: 요청 상세 조회
+      operationId: getRequestDetail
+      parameters:
+        - in: path
+          name: request_uid
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /client/v1/health:
+    get:
+      tags: [Health]
+      summary: 헬스체크
+      operationId: healthCheck
+      responses:
+        '200':
+          description: 정상
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  responses:
+    ValidationError:
+      description: 요청 검증 실패
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UpstreamError:
+      description: LLMAPI 호출 실패
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    QueueUnavailableError:
+      description: 큐 사용 불가
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    DuplicateRequestError:
+      description: 중복 요청 식별자 충돌
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFoundError:
+      description: 조회 대상 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: 내부 서버 오류
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    RequestStatus:
+      type: string
+      enum: [RECEIVED, QUEUED, PROCESSING, COMPLETED, FAILED, TIMEOUT]
+
+    ClientAnalyzeOptions:
+      type: object
+      additionalProperties: false
+      properties:
+        language:
+          type: string
+          default: ko
+        prompt_version:
+          type: string
+          example: v1.1
+
+    ClientAnalyzeRequest:
+      type: object
+      additionalProperties: false
+      required: [source_system, client_request_id, text, tasks]
+      properties:
+        source_system:
+          type: string
+          maxLength: 64
+          example: qa-admin
+        client_request_id:
+          type: string
+          maxLength: 100
+          example: req_20260412_0001
+        text:
+          type: string
+          minLength: 1
+          example: "고객: 배송이 늦어요. 상담원: 확인하겠습니다."
+        tasks:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [summary, sentiment, category]
+        target_speakers:
+          type: string
+          enum: [agent, customer, both]
+          default: both
+        options:
+          $ref: '#/components/schemas/ClientAnalyzeOptions'
+
+    ClientAnalyzeUsage:
+      type: object
+      properties:
+        total_tokens:
+          type: integer
+          minimum: 0
+        latency_ms:
+          type: integer
+          minimum: 0
+
+    ClientAnalyzeResponse:
+      type: object
+      required: [request_uid, trace_id, status, result]
+      properties:
+        request_uid:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+        status:
+          type: string
+          enum: [COMPLETED]
+        result:
+          type: object
+          additionalProperties: true
+        usage:
+          $ref: '#/components/schemas/ClientAnalyzeUsage'
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+
+    ClientAsyncEnqueueResponse:
+      type: object
+      required: [request_uid, trace_id, job_id, status, idempotent_replay]
+      properties:
+        request_uid:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+        job_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/RequestStatus'
+        idempotent_replay:
+          type: boolean
+          description: 동일 요청키가 이미 존재하여 기존 job을 재사용한 경우 true
+
+    ClientAsyncStatusResponse:
+      type: object
+      required: [request_uid, trace_id, job_id, status]
+      properties:
+        request_uid:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+        job_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/RequestStatus'
+        result:
+          type: object
+          nullable: true
+          additionalProperties: true
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+
+    RequestSummaryItem:
+      type: object
+      required: [request_uid, source_system, client_request_id, status, created_at]
+      properties:
+        request_uid:
+          type: string
+        source_system:
+          type: string
+        client_request_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/RequestStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RequestListResponse:
+      type: object
+      required: [page, size, total, items]
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestSummaryItem'
+
+    RequestDetailResponse:
+      type: object
+      required: [request, status_history]
+      properties:
+        request:
+          type: object
+          additionalProperties: true
+        result:
+          type: object
+          nullable: true
+          additionalProperties: true
+        status_history:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    HealthResponse:
+      type: object
+      required: [status, version, checks]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        version:
+          type: string
+        checks:
+          type: object
+          properties:
+            mysql:
+              type: string
+            redis:
+              type: string
+              enum: [ok, error, skip]
+            llmapi:
+              type: string
+
+    ErrorResponse:
+      type: object
+      required: [error_code, error_message]
+      properties:
+        error_code:
+          type: string
+        error_message:
+          type: string
+        trace_id:
+          type: string
+          nullable: true

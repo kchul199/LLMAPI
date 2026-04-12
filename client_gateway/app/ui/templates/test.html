@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-card compact">
+  <div>
+    <h1>분석 테스트</h1>
+    <p>브라우저에서 동기/비동기 요청을 실행하고 응답을 즉시 확인합니다.</p>
+  </div>
+</section>
+
+<section class="grid grid-2">
+  <article class="panel">
+    <header class="panel-head">
+      <h3>요청 입력</h3>
+    </header>
+
+    <form id="analyze-form" class="form-stack" novalidate>
+      <div class="field">
+        <label for="source_system">source_system</label>
+        <input id="source_system" name="source_system" type="text" maxlength="64" placeholder="qa-admin" required />
+      </div>
+
+      <div class="field">
+        <label for="client_request_id">client_request_id</label>
+        <input id="client_request_id" name="client_request_id" type="text" maxlength="100" placeholder="req_20260412_0001" required />
+      </div>
+
+      <div class="field">
+        <label for="text">text</label>
+        <textarea id="text" name="text" rows="6" placeholder="고객: 배송이 늦어요. 상담원: 확인하겠습니다." required></textarea>
+      </div>
+
+      <fieldset class="field">
+        <legend>tasks</legend>
+        <label class="checkbox"><input type="checkbox" name="tasks" value="summary" checked /> summary</label>
+        <label class="checkbox"><input type="checkbox" name="tasks" value="sentiment" checked /> sentiment</label>
+        <label class="checkbox"><input type="checkbox" name="tasks" value="category" /> category</label>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>target_speakers</legend>
+        <label class="radio"><input type="radio" name="target_speakers" value="both" checked /> both</label>
+        <label class="radio"><input type="radio" name="target_speakers" value="customer" /> customer</label>
+        <label class="radio"><input type="radio" name="target_speakers" value="agent" /> agent</label>
+      </fieldset>
+
+      <div class="field">
+        <label for="prompt_version">prompt_version</label>
+        <input id="prompt_version" name="prompt_version" type="text" value="v1.1" />
+      </div>
+
+      <div id="form-error" class="form-error" hidden></div>
+
+      <div class="button-row">
+        <button id="btn-sync" type="button" class="btn btn-primary">동기 요청 실행</button>
+        <button id="btn-async" type="button" class="btn btn-secondary">비동기 요청 등록</button>
+        <button id="btn-sample" type="button" class="btn btn-ghost">JSON 예시 채우기</button>
+        <button id="btn-reset" type="reset" class="btn btn-ghost">폼 초기화</button>
+      </div>
+    </form>
+  </article>
+
+  <article class="panel">
+    <header class="panel-head">
+      <h3>응답 결과</h3>
+      <span id="response-status-badge" class="status-badge status-neutral">대기</span>
+    </header>
+
+    <div class="meta-grid" id="response-meta">
+      <div><span>request_uid</span><strong id="meta-request-uid">-</strong></div>
+      <div><span>trace_id</span><strong id="meta-trace-id">-</strong></div>
+      <div><span>job_id</span><strong id="meta-job-id">-</strong></div>
+      <div><span>http_status</span><strong id="meta-http-status">-</strong></div>
+      <div><span>mode</span><strong id="meta-mode">-</strong></div>
+      <div><span>polling</span><strong id="meta-polling">-</strong></div>
+    </div>
+
+    <div id="response-error" class="error-box" hidden></div>
+
+    <div class="pre-head">
+      <h4>Response JSON</h4>
+      <button id="btn-copy-json" type="button" class="btn btn-mini">Copy JSON</button>
+    </div>
+    <pre id="response-json" class="json-box">{}</pre>
+  </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('ui-static', path='js/ui_test.js') }}" defer></script>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-card">
+  <div>
+    <h1>Client Gateway Dashboard</h1>
+    <p>오늘 처리 현황과 연결 상태를 빠르게 확인하고 테스트를 시작하세요.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="/ui/test">동기/비동기 테스트</a>
+    <a class="btn btn-ghost" href="/ui/history">요청 이력 조회</a>
+  </div>
+</section>
+
+<section class="grid grid-3">
+  <article class="metric-card">
+    <h2>오늘 요청</h2>
+    <p class="metric-value" id="metric-total">-</p>
+  </article>
+  <article class="metric-card danger-soft">
+    <h2>오늘 실패</h2>
+    <p class="metric-value" id="metric-failed">-</p>
+  </article>
+  <article class="metric-card">
+    <h2>평균 지연(ms)</h2>
+    <p class="metric-value" id="metric-latency">-</p>
+  </article>
+</section>
+
+<section class="grid grid-2">
+  <article class="panel">
+    <header class="panel-head">
+      <h3>서비스 상태</h3>
+      <span id="health-overall" class="status-badge status-neutral">확인중</span>
+    </header>
+    <div class="health-list">
+      <div><span>MySQL</span><strong id="health-mysql">-</strong></div>
+      <div><span>Redis</span><strong id="health-redis">-</strong></div>
+      <div><span>LLMAPI</span><strong id="health-llmapi">-</strong></div>
+    </div>
+  </article>
+
+  <article class="panel">
+    <header class="panel-head">
+      <h3>상태별 건수</h3>
+      <span class="text-muted" id="summary-date">-</span>
+    </header>
+    <div class="status-grid">
+      <div><span>RECEIVED</span><strong id="count-RECEIVED">0</strong></div>
+      <div><span>QUEUED</span><strong id="count-QUEUED">0</strong></div>
+      <div><span>PROCESSING</span><strong id="count-PROCESSING">0</strong></div>
+      <div><span>COMPLETED</span><strong id="count-COMPLETED">0</strong></div>
+      <div><span>FAILED</span><strong id="count-FAILED">0</strong></div>
+      <div><span>TIMEOUT</span><strong id="count-TIMEOUT">0</strong></div>
+    </div>
+  </article>
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <h3>최근 실패 요청 5건</h3>
+  </header>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>request_uid</th>
+          <th>source_system</th>
+          <th>status</th>
+          <th>error_code</th>
+          <th>updated_at</th>
+        </tr>
+      </thead>
+      <tbody id="recent-failed-body">
+        <tr><td colspan="5" class="empty">로딩중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('ui-static', path='js/ui_dashboard.js') }}" defer></script>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-card compact" id="detail-root" data-request-uid="{{ request_uid }}">
+  <div>
+    <h1>요청 상세</h1>
+    <p>request_uid: <strong class="mono">{{ request_uid }}</strong></p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn btn-ghost" href="/ui/history">목록으로</a>
+    <a class="btn btn-primary" id="btn-retest" href="/ui/test">동일 조건으로 재테스트</a>
+  </div>
+</section>
+
+<section class="grid grid-2">
+  <article class="panel">
+    <header class="panel-head">
+      <h3>기본 정보</h3>
+      <span id="detail-status" class="status-badge status-neutral">로딩중</span>
+    </header>
+    <dl class="kv-list" id="detail-basic"></dl>
+  </article>
+
+  <article class="panel">
+    <header class="panel-head">
+      <h3>오류 정보</h3>
+    </header>
+    <p id="detail-error" class="text-muted">오류 없음</p>
+  </article>
+</section>
+
+<section class="grid grid-2">
+  <article class="panel">
+    <header class="panel-head"><h3>요청 데이터</h3></header>
+    <pre id="detail-request" class="json-box">{}</pre>
+  </article>
+  <article class="panel">
+    <header class="panel-head"><h3>결과 데이터</h3></header>
+    <pre id="detail-result" class="json-box">{}</pre>
+  </article>
+</section>
+
+<section class="panel">
+  <header class="panel-head"><h3>상태 전이 타임라인</h3></header>
+  <ul id="detail-timeline" class="timeline"></ul>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('ui-static', path='js/ui_history_detail.js') }}" defer></script>
+{% endblock %}
